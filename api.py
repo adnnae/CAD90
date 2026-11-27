@@ -64,16 +64,16 @@ def debug_wine():
     import subprocess
     cmds = [
         ["which", "wine"],
-        ["which", "wine32"],
-        ["which", "wine64"],
         ["wine", "--version"],
-        ["ls", "-la", str(BINS_DIR)],
+        ["apt-cache", "search", "wine-mono"],
+        ["apt-cache", "search", "mono-runtime"],
+        ["wine", str(BINS_DIR / "CASIMPLE_WIN64.EXE")],
     ]
     results = {}
     for cmd in cmds:
         try:
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            results[" ".join(cmd)] = {"stdout": r.stdout.strip(), "stderr": r.stderr.strip(), "code": r.returncode}
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            results[" ".join(cmd)] = {"stdout": r.stdout[:500], "stderr": r.stderr[:500], "code": r.returncode}
         except Exception as e:
             results[" ".join(cmd)] = str(e)
     return results
