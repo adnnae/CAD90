@@ -346,7 +346,7 @@ class EngineRunner:
         before_engine_files: Set[Path] = {p for p in engine_dir.iterdir() if p.is_file()}
         start_ts = time.time()
 
-        wine_cmd = shutil.which("wine64") or shutil.which("wine") or "wine"
+        wine_cmd = shutil.which("wine") or shutil.which("wine64") or "wine"
         env = dict(os.environ)
         env["WINEDEBUG"] = "-all"
         runtime_dir = Path("/tmp/runtime-root")

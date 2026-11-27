@@ -51,13 +51,56 @@ def health_check():
     return {
         "status": "online",
         "service": "CAD90 Calculation Engine Server",
-        "commit": "f60ccf3-wine32",
+        "commit": "debug-wine",
         "engines_available": [
             (BINS_DIR / "CASIMPLE_WIN64.EXE").is_file(),
             (BINS_DIR / "CADOUBLE_WIN64.EXE").is_file(),
             (BINS_DIR / "CATRIPLE_WIN64.EXE").is_file(),
         ],
     }
+
+
+@app.get("/api/debug")
+def debug_wine():
+    import subprocess, shutil, os
+    res = {}
+    res["wine_path"] = shutil.which("wine")
+    res["wine64_path"] = shutil.which("wine64")
+    res["wineboot"] = shutil.which("wineboot")
+    
+    # Check wine version
+    try:
+        w_ver = subprocess.run(["wine", "--version"], capture_output=True, text=True, timeout=5)
+        res["wine_version"] = w_ver.stdout.strip() or w_ver.stderr.strip()
+    except Exception as e:
+        res["wine_version_err"] = str(e)
+
+    # Check xvfb
+    res["xvfb_path"] = shutil.which("Xvfb")
+    res["display_env"] = os.environ.get("DISPLAY")
+
+    # Check test run of CASIMPLE_WIN64.EXE
+    engine_path = BINS_DIR / "CASIMPLE_WIN64.EXE"
+    res["engine_exists"] = engine_path.is_file()
+    if engine_path.is_file():
+        env = dict(os.environ)
+        env["WINEDEBUG"] = "+all"
+        try:
+            p = subprocess.run(
+                ["wine", str(engine_path.resolve())],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                cwd=str(BINS_DIR),
+                env=env,
+            )
+            res["test_returncode"] = p.returncode
+            res["test_stdout"] = p.stdout[:500]
+            res["test_stderr"] = p.stderr[:1000]
+        except Exception as e:
+            res["test_run_err"] = str(e)
+            
+    return res
 
 
 @app.post("/api/calculate", response_model=CalculationResponse)
