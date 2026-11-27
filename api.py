@@ -60,8 +60,57 @@ def health_check():
     }
 
 
-@app.get("/api/debug")
-def debug_wine():
+@app.get("/api/debug-run")
+def debug_run():
+    import subprocess, os, tempfile, shutil
+    engine_path = BINS_DIR / "CASIMPLE_WIN64.EXE"
+    with tempfile.TemporaryDirectory() as td:
+        tw = Path(td)
+        # copy sample DALOT01 if present or generate dummy
+        data_file = tw / "DALOT01"
+        generator.generate(StructureType.SIMPLE, {
+            "nom_fichier": "DALOT01", "ouverture": 2.0, "gabarit": 2.0,
+            "plate_forme": 10.0, "poids_superstructures": 0.24,
+            "nb_cas_remblai": 1, "hauteurs_remblai": [1.0], "epaisseurs_cadre": [0.20],
+            "densite_remblai": 1.8, "c1": 0.25, "c2": 0.5, "maj_c1": 1.3, "maj_c2": 1.4,
+            "surcharge_remblai": 1.0, "pente_horiz": 1.0, "pente_vert": 1.0,
+            "contrainte_beton_adm": 135.0, "contrainte_beton_eco": 100.0, "contrainte_beton_ref": 5.8,
+            "contrainte_acier_adm": 2800.0, "contrainte_etrier_adm": 2800.0, "densite_beton": 2.5,
+            "poisson": 0.15, "longueur_barre": 12.0, "equiv_acier_beton": 15.0, "enrobage": 3.0,
+            "charges_routieres": 1, "indice_ferraillage": 1, "indice_resistance": 0, "contrainte_sol": 2.0,
+        }, tw)
+        
+        env = dict(os.environ)
+        env["WINEDEBUG"] = "-all"
+        env["DISPLAY"] = ":99"
+        
+        # Test 1: Popen with stdin=subprocess.PIPE
+        stdin_data = b"DALOT01\r\n1\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n"
+        proc = subprocess.Popen(
+            ["wine", str(engine_path.resolve())],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            cwd=str(tw),
+            env=env,
+        )
+        try:
+            out, err = proc.communicate(input=stdin_data, timeout=10)
+            files = [f.name for f in tw.iterdir()]
+            result_txt = (tw / "DALOT01_resultat.txt").read_text(errors="ignore") if (tw / "DALOT01_resultat.txt").is_file() else ""
+            return {
+                "exit_code": proc.returncode,
+                "stdout_len": len(out),
+                "stdout_sample": out.decode("latin1", errors="ignore")[:500],
+                "stderr": err.decode("latin1", errors="ignore")[:500],
+                "files_in_temp": files,
+                "result_txt_len": len(result_txt),
+            }
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            return {"error": "Timeout expired in communicate"}
+        except Exception as e:
+            return {"error": str(e)}
     import subprocess, shutil, os
     res = {}
     res["wine_path"] = shutil.which("wine")
