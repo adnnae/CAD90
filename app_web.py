@@ -111,38 +111,29 @@ with st.sidebar.expander("⚙️ Options avancées"):
     indice_res = st.selectbox("Résistance du sol", options=[0, 1], format_func=lambda x: "Non vérifiée / standard" if x == 0 else "Vérification sol élastique")
     contrainte_sol = st.number_input("Contrainte admissible sol (bars)", min_value=0.1, max_value=20.0, value=2.0, step=0.1)
 
-# Construction du dictionnaire de paramètres
-params = {
+# Récupération de l'ensemble complet des paramètres par défaut du schéma
+def get_default_params(st_type: StructureType) -> dict:
+    defaults = {}
+    for sec in schema.sections_for(st_type):
+        for fld in sec.get("fields", []):
+            defaults[fld["id"]] = fld.get("default")
+    return defaults
+
+params = get_default_params(st_type_choice)
+params.update({
     "nom_fichier": nom_fichier or "DALOT01",
-    "ouverture": ouverture,
-    "gabarit": gabarit,
-    "plate_forme": plate_forme,
-    "poids_superstructures": poids_sup,
+    "ouverture": float(ouverture),
+    "gabarit": float(gabarit),
+    "plate_forme": float(plate_forme),
+    "poids_superstructures": float(poids_sup),
     "nb_cas_remblai": int(nb_cas),
-    "hauteurs_remblai": hauteurs_remblai,
-    "epaisseurs_cadre": epaisseurs_cadre,
-    "charges_routieres": charges_rout,
-    "indice_ferraillage": indice_ferr,
-    "indice_resistance": indice_res,
-    "contrainte_sol": contrainte_sol,
-    "portance_minimale": 0.0,
-    "remblai_type": 0,
-    "type_fissuration": 0,
-    "coeff_majoration_dynamique": 1.0,
-    "angle_frottement_interne": 30.0,
-    "poids_volumique_terre": 2.0,
-    "poids_volumique_beton": 2.5,
-    "largeur_roulante": 7.0,
-    "classe_pont": 1,
-    "largeur_trottoir_gauche": 1.5,
-    "largeur_trottoir_droit": 1.5,
-    "charge_trottoir": 0.15,
-    "presence_remblai": 1,
-    "epaisseur_chaussee": 0.10,
-    "contrainte_traction_acier": 400.0,
-    "resistance_compression_beton": 25.0,
-    "enrobage": 3.0,
-}
+    "hauteurs_remblai": [float(x) for x in hauteurs_remblai],
+    "epaisseurs_cadre": [float(x) for x in epaisseurs_cadre],
+    "charges_routieres": int(charges_rout),
+    "indice_ferraillage": int(indice_ferr),
+    "indice_resistance": int(indice_res),
+    "contrainte_sol": float(contrainte_sol),
+})
 
 # Zone principale
 col_sketch, col_actions = st.columns([3, 1])
