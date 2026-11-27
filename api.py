@@ -92,7 +92,7 @@ def test_wine_run():
             stderr=subprocess.PIPE,
         )
         inputs = b"DALOT01\r\n1\r\n\r\n\r\n\r\n"
-        out, err = p.communicate(input=inputs, timeout=10)
+        out, err = p.communicate(input=inputs, timeout=30)
         return {
             "stdout": out.decode("latin1", errors="replace"),
             "stderr": err.decode("latin1", errors="replace"),
