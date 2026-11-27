@@ -349,6 +349,13 @@ class EngineRunner:
         wine_cmd = shutil.which("wine64") or shutil.which("wine") or "wine"
         env = dict(os.environ)
         env["WINEDEBUG"] = "-all"
+        runtime_dir = Path("/tmp/runtime-root")
+        try:
+            runtime_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        except OSError:
+            pass
+        env["XDG_RUNTIME_DIR"] = str(runtime_dir)
+        env["DISPLAY"] = env.get("DISPLAY", ":99")
 
         captured_output: List[bytes] = []
         exit_code = 0
