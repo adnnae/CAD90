@@ -7,7 +7,7 @@ ENV WINEPREFIX=/root/.wine
 ENV DISPLAY=:99
 ENV XDG_RUNTIME_DIR=/root/.runtime
 
-# Installation du support multiarch 32-bit (i386) et 64-bit pour Wine
+# Installation des dépendances système, Wine 32/64 bits, Xvfb, wget et ca-certificates
 RUN dpkg --add-architecture i386 && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -16,7 +16,13 @@ RUN dpkg --add-architecture i386 && \
         wine64 \
         procps \
         xvfb \
+        wget \
+        ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+
+# Installation de Wine-Mono (nécessaire pour exécuter les binaires .NET v4.0.30319 comme CASIMPLE)
+RUN mkdir -p /usr/share/wine/mono && \
+    wget -q -O /usr/share/wine/mono/wine-mono-9.4.0-x86.msi https://dl.winehq.org/wine/wine-mono/9.4.0/wine-mono-9.4.0-x86.msi
 
 WORKDIR /app
 
@@ -24,12 +30,16 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copie du projet et des binaires legacy_bins
+# Copie du projet et des binaires
 COPY . .
 
-# Préparation du répertoire runtime et initialisation silencieuse de Wine
+# Initialisation de Wine avec Wine-Mono
 RUN mkdir -p /root/.runtime && chmod 700 /root/.runtime && \
-    mkdir -p /root/.wine && wineboot --init || true
+    mkdir -p /root/.wine && \
+    Xvfb :99 -screen 0 1024x768x16 & \
+    sleep 1 && \
+    wine msiexec /i /usr/share/wine/mono/wine-mono-9.4.0-x86.msi || true && \
+    wineboot --init || true
 
 EXPOSE 10000
 
