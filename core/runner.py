@@ -135,8 +135,23 @@ class EngineRunner:
                 timeout_seconds=max(timeout_seconds, 90),
             )
 
-        # On non-Windows platforms (e.g. Linux container with Wine on Render), use Wine runner
+        # On non-Windows platforms (e.g. Linux container on Render), prefer DOSBox with original 16-bit DOS EXEs
         if _k32 is None:
+            dos_map = {
+                StructureType.SIMPLE: "CASIMPLE.EXE",
+                StructureType.DOUBLE: "CADOUBLE.EXE",
+                StructureType.TRIPLE: "CATRIPLE.EXE",
+            }
+            dos_bins_dir = engine_path.parent.parent / "dos_bins"
+            dos_exe = dos_bins_dir / dos_map[structure_type]
+            if dos_exe.is_file() and shutil.which("dosbox"):
+                return self._run_engine_dosbox(
+                    structure_type=structure_type,
+                    dos_exe=dos_exe,
+                    data_file_path=data_file_path,
+                    work_dir=work_dir,
+                    timeout_seconds=timeout_seconds,
+                )
             return self._run_engine_linux_wine(
                 structure_type=structure_type,
                 engine_path=engine_path,
@@ -584,4 +599,182 @@ class EngineRunner:
             stdout=stdout,
             generated_files=generated_files,
             error_message=data.get("error_message", ""),
+        )
+
+    @staticmethod
+    def _build_prn_hook_com() -> bytes:
+        """Build a tiny 16-bit MS-DOS TSR (.COM) that redirects INT 21h Open('PRN') to 'OUT.TXT'."""
+        buf = bytearray()
+        labels = {}
+        fixups_rel8 = []
+        fixups_abs16 = []
+
+        def emit(b):
+            buf.extend(b)
+
+        def label(name):
+            labels[name] = 0x100 + len(buf)
+
+        def rel8(target):
+            fixups_rel8.append((len(buf), target))
+            buf.append(0)
+
+        def abs16(target):
+            fixups_abs16.append((len(buf), target))
+            buf.extend(b"\x00\x00")
+
+        # jmp init (3 bytes: E9 xx xx)
+        emit(b"\xE9")
+        fixups_rel16_init = len(buf)
+        emit(b"\x00\x00")
+
+        label("old_off"); emit(b"\x00\x00")
+        label("old_seg"); emit(b"\x00\x00")
+        label("out_name"); emit(b"OUT.TXT\x00")
+
+        label("handler")
+        emit(b"\x80\xFC\x3D")        # cmp ah, 0x3D
+        emit(b"\x74"); rel8("check_prn")
+        label("chain")
+        emit(b"\x2E\xFF\x2E"); abs16("old_off")  # jmp far [cs:old_off]
+
+        label("check_prn")
+        emit(b"\x56\x89\xD6")        # push si; mov si, dx
+        for ch in (0x50, 0x52, 0x4E):  # 'P', 'R', 'N'
+            emit(b"\xAC\x24\xDF\x3C" + bytes([ch]))
+            emit(b"\x75"); rel8("not_prn")
+        emit(b"\xAC\x3C\x00")        # lodsb; cmp al, 0
+        emit(b"\x75"); rel8("not_prn")
+        emit(b"\x5E")                # pop si
+        emit(b"\xEB"); rel8("is_prn")
+
+        label("not_prn")
+        emit(b"\x5E")                # pop si
+        emit(b"\xEB"); rel8("chain")
+
+        label("is_prn")
+        emit(b"\x1E\x52\x51\x0E\x1F")  # push ds; push dx; push cx; push cs; pop ds
+        emit(b"\xBA"); abs16("out_name")  # mov dx, out_name
+        emit(b"\xB4\x3C\x31\xC9\x9C")  # mov ah, 3Ch; xor cx, cx; pushf
+        emit(b"\x2E\xFF\x1E"); abs16("old_off")  # call far [cs:old_off]
+        emit(b"\x59\x5A\x1F")        # pop cx; pop dx; pop ds
+        emit(b"\xCA\x02\x00")        # retf 2
+
+        label("init")
+        emit(b"\xB8\x21\x35\xCD\x21")  # mov ax, 3521h; int 21h
+        emit(b"\x89\x1E"); abs16("old_off")  # mov [old_off], bx
+        emit(b"\x8C\x06"); abs16("old_seg")  # mov [old_seg], es
+        emit(b"\xBA"); abs16("handler")      # mov dx, handler
+        emit(b"\xB8\x21\x25\xCD\x21")  # mov ax, 2521h; int 21h
+        emit(b"\xBA\x20\x00\xB8\x00\x31\xCD\x21")  # mov dx, 20h; mov ax, 3100h; int 21h
+
+        # Patch rel16 init
+        rel16 = labels["init"] - (0x100 + fixups_rel16_init + 2)
+        buf[fixups_rel16_init:fixups_rel16_init + 2] = rel16.to_bytes(2, "little", signed=True)
+        for pos, target in fixups_rel8:
+            disp = labels[target] - (0x100 + pos + 1)
+            buf[pos] = disp & 0xFF
+        for pos, target in fixups_abs16:
+            buf[pos:pos + 2] = labels[target].to_bytes(2, "little")
+        return bytes(buf)
+
+    def _run_engine_dosbox(
+        self,
+        structure_type: StructureType,
+        dos_exe: Path,
+        data_file_path: Path,
+        work_dir: Path,
+        timeout_seconds: int = 45,
+    ) -> ExecutionResult:
+        """Run original 16-bit MS-DOS engine inside headless DOSBox and capture PRN/STDOUT output."""
+        import os
+
+        work_dir.mkdir(parents=True, exist_ok=True)
+        start_ts = time.time()
+
+        # Copy DOS executable and input data into work_dir
+        local_exe = work_dir / dos_exe.name
+        if not local_exe.exists():
+            shutil.copyfile(dos_exe, local_exe)
+
+        local_data = work_dir / data_file_path.name
+        if data_file_path.resolve() != local_data.resolve():
+            shutil.copyfile(data_file_path, local_data)
+
+        # Write HOOK.COM, IN.TXT, RUN.BAT, dosbox.conf
+        (work_dir / "HOOK.COM").write_bytes(self._build_prn_hook_com())
+        (work_dir / "IN.TXT").write_bytes(
+            (f"{data_file_path.name}\r\n2\r\n" + "\r\n" * 10).encode("cp850", errors="replace")
+        )
+        (work_dir / "RUN.BAT").write_text(
+            f"@echo off\r\nHOOK.COM\r\n{dos_exe.name} < IN.TXT > STDOUT.TXT\r\nexit\r\n",
+            encoding="ascii",
+        )
+        (work_dir / "dosbox.conf").write_text(
+            "[sdl]\nusescancodes=false\n"
+            "[dosbox]\nmachine=svga_s3\n"
+            "[cpu]\ncycles=max\n"
+            "[mixer]\nnosound=true\n",
+            encoding="ascii",
+        )
+
+        env = dict(os.environ)
+        env["SDL_VIDEODRIVER"] = "dummy"
+        env["SDL_AUDIODRIVER"] = "dummy"
+
+        try:
+            proc = subprocess.run(
+                ["dosbox", "-conf", str(work_dir / "dosbox.conf"), str(work_dir / "RUN.BAT")],
+                cwd=str(work_dir),
+                env=env,
+                capture_output=True,
+                timeout=timeout_seconds,
+            )
+            exit_code = proc.returncode
+        except subprocess.TimeoutExpired:
+            return ExecutionResult(
+                success=False,
+                structure_type=structure_type,
+                engine_path=str(dos_exe),
+                work_dir=str(work_dir),
+                data_file_path=str(data_file_path),
+                error_message=f"Délai DOSBox dépassé ({timeout_seconds}s).",
+            )
+        except Exception as exc:
+            return ExecutionResult(
+                success=False,
+                structure_type=structure_type,
+                engine_path=str(dos_exe),
+                work_dir=str(work_dir),
+                data_file_path=str(data_file_path),
+                error_message=f"Erreur lancement DOSBox : {exc}",
+            )
+
+        out_txt = ""
+        for cand in (work_dir / "OUT.TXT", work_dir / "STDOUT.TXT"):
+            if cand.is_file() and cand.stat().st_size > 0:
+                out_txt += cand.read_text(encoding="cp850", errors="replace") + "\n"
+
+        out_txt = out_txt.strip()
+        report_path = work_dir / f"{data_file_path.name}_resultat.txt"
+        report_path.write_text(out_txt, encoding="utf-8")
+
+        generated_files = [
+            p for p in work_dir.iterdir()
+            if p.is_file() and p.name not in ("HOOK.COM", "IN.TXT", "RUN.BAT", "dosbox.conf", dos_exe.name)
+            and p.stat().st_mtime >= start_ts - 2
+        ]
+        if report_path not in generated_files:
+            generated_files.append(report_path)
+
+        return ExecutionResult(
+            success=(exit_code == 0 and bool(out_txt)),
+            structure_type=structure_type,
+            engine_path=f"dosbox:{dos_exe.name}",
+            work_dir=str(work_dir),
+            data_file_path=str(data_file_path),
+            exit_code=exit_code,
+            stdout=out_txt,
+            generated_files=sorted(generated_files),
+            error_message="" if (exit_code == 0 and out_txt) else f"DOSBox code={exit_code}",
         )
