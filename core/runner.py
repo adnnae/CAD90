@@ -707,9 +707,9 @@ class EngineRunner:
         if data_file_path.resolve() != local_data.resolve():
             shutil.copyfile(data_file_path, local_data)
 
-        # Write IN.TXT: 'C' (bypass Central Point Anti-Virus 1991 prompt) + filename + Choice 1 + newlines
+        # Write IN.TXT: 'C' (1 char for CPAV, no newline) + filename + ' 1' (I2 format) + newlines
         (work_dir / "IN.TXT").write_bytes(
-            (f"C\r\n{data_file_path.name}\r\n1\r\n" + "\r\n" * 80).encode("cp850", errors="replace")
+            (f"C{data_file_path.name}\r\n 1\r\n" + "\r\n" * 80).encode("cp850", errors="replace")
         )
         (work_dir / "RUN.BAT").write_text(
             f"@echo off\r\n{dos_exe.name} < IN.TXT > STDOUT.TXT\r\nexit\r\n",

@@ -94,7 +94,7 @@ def test_wine_run():
         p = {fld["id"]: fld.get("default") for sec in schema.sections_for(StructureType.SIMPLE) for fld in sec["fields"]}
         p.update({"nom_fichier": "DALOT01", "hauteurs_remblai": [1.0], "epaisseurs_cadre": [0.20]})
         generator.generate(StructureType.SIMPLE, p, wd)
-        (wd / "IN.TXT").write_bytes((b"C\r\nDALOT01\r\n1\r\n" + b"\r\n" * 80))
+        (wd / "IN.TXT").write_bytes((b"CDALOT01\r\n 1\r\n" + b"\r\n" * 80))
         (wd / "RUN.BAT").write_text("@echo off\r\nCASIMPLE.EXE < IN.TXT > STDOUT.TXT\r\nexit\r\n", encoding="ascii")
         (wd / "dosbox.conf").write_text("[cpu]\ncycles=max\n[mixer]\nnosound=true\n", encoding="ascii")
         env = dict(os.environ)
