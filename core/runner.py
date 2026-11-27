@@ -132,7 +132,7 @@ class EngineRunner:
                 params=params,
                 data_file_path=data_file_path,
                 work_dir=work_dir,
-                timeout_seconds=timeout_seconds,
+                timeout_seconds=max(timeout_seconds, 90),
             )
 
         # On non-Windows platforms (e.g. Linux container with Wine on Render), use Wine runner
