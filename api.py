@@ -79,6 +79,29 @@ def debug_wine():
     return results
 
 
+@app.get("/api/test_run")
+def test_wine_run():
+    import subprocess
+    cmd = ["wine", str(BINS_DIR / "CASIMPLE_WIN64.EXE")]
+    try:
+        p = subprocess.Popen(
+            cmd,
+            cwd=str(BINS_DIR),
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        inputs = b"DALOT01\r\n1\r\n\r\n\r\n\r\n"
+        out, err = p.communicate(input=inputs, timeout=10)
+        return {
+            "stdout": out.decode("latin1", errors="replace"),
+            "stderr": err.decode("latin1", errors="replace"),
+            "code": p.returncode,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
 @app.post("/api/calculate", response_model=CalculationResponse)
 def calculate(req: CalculationRequest):
     try:
