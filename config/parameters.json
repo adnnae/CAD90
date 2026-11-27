@@ -1,0 +1,287 @@
+{
+  "version": "0.1-draft",
+  "note": "Paramètres extraits de l'analyse binaire de emb.DONCADRE.EXE (doncadr.FOR). L'ordre exact d'écriture dans le fichier de données reste à valider avec les 3 fichiers témoins (simple, double, triple).",
+  "sections": [
+    {
+      "id": "general",
+      "title": "Généralités & Géométrie",
+      "fields": [
+        {
+          "id": "nom_fichier",
+          "label": "Nom du fichier de données (8 car. max)",
+          "type": "string",
+          "default": "DALOT01",
+          "max_length": 8,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "ouverture",
+          "label": "Ouverture (m)",
+          "type": "float",
+          "default": 2.0,
+          "min": 0.1,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "gabarit",
+          "label": "Gabarit (m)",
+          "type": "float",
+          "default": 2.0,
+          "min": 0.1,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "plate_forme",
+          "label": "Largeur de la plate-forme routière (m)",
+          "type": "float",
+          "default": 10.0,
+          "min": 0.5,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "poids_superstructures",
+          "label": "Poids des superstructures (t/m²)",
+          "type": "float",
+          "default": 0.24,
+          "min": 0.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        }
+      ]
+    },
+    {
+      "id": "options_calcul",
+      "title": "Options de calcul",
+      "fields": [
+        {
+          "id": "indice_ferraillage",
+          "label": "Calcul du ferraillage",
+          "type": "choice",
+          "choices": [
+            {"value": 1, "label": "1 - Caractéristiques du ferraillage"},
+            {"value": 0, "label": "0 - Efforts dans le cadre uniquement"}
+          ],
+          "default": 1,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "indice_resistance",
+          "label": "Indice de résistance",
+          "type": "choice",
+          "choices": [
+            {"value": 0, "label": "0 - Standard"},
+            {"value": 1, "label": "1 - Réduire les contraintes béton (augmentation ferraillage)"}
+          ],
+          "default": 0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "charges_routieres",
+          "label": "Prise en compte des charges routières",
+          "type": "choice",
+          "choices": [
+            {"value": 1, "label": "1 - Oui (prendre en compte)"},
+            {"value": 0, "label": "0 - Non"}
+          ],
+          "default": 1,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        }
+      ]
+    },
+    {
+      "id": "remblai_cas",
+      "title": "Cas de hauteurs de remblai et épaisseurs",
+      "fields": [
+        {
+          "id": "nb_cas_remblai",
+          "label": "Nombre de cas de hauteurs de remblai (1 à 21)",
+          "type": "int",
+          "default": 1,
+          "min": 1,
+          "max": 21,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "hauteurs_remblai",
+          "label": "Hauteurs de remblai par cas (m, séparées par virgule)",
+          "type": "float_list",
+          "default": "1.0",
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "epaisseurs_cadre",
+          "label": "Épaisseurs du cadre par cas (m, séparées par virgule)",
+          "type": "float_list",
+          "default": "0.20",
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        }
+      ]
+    },
+    {
+      "id": "remblai_params",
+      "title": "Caractéristiques du remblai",
+      "fields": [
+        {
+          "id": "densite_remblai",
+          "label": "Densité du remblai γ (t/m³)",
+          "type": "float",
+          "default": 1.8,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "c1",
+          "label": "Coefficient de poussée minimal c1",
+          "type": "float",
+          "default": 0.25,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "c2",
+          "label": "Coefficient de poussée maximal c2",
+          "type": "float",
+          "default": 0.50,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "maj_c1",
+          "label": "Coeff. majoration poids remblai lié à c1",
+          "type": "float",
+          "default": 1.3,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "maj_c2",
+          "label": "Coeff. majoration poids remblai lié à c2",
+          "type": "float",
+          "default": 1.4,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "surcharge_remblai",
+          "label": "Surcharge de remblai (t/m²)",
+          "type": "float",
+          "default": 1.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "pente_horiz",
+          "label": "Pente du remblai - distance horizontale",
+          "type": "float",
+          "default": 1.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "pente_vert",
+          "label": "Pente du remblai - distance verticale",
+          "type": "float",
+          "default": 1.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        }
+      ]
+    },
+    {
+      "id": "materiaux",
+      "title": "Matériaux (Béton armé & Aciers)",
+      "fields": [
+        {
+          "id": "contrainte_beton_adm",
+          "label": "Contrainte admissible compression béton (kg/cm²)",
+          "type": "float",
+          "default": 135.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "contrainte_beton_eco",
+          "label": "Contrainte compression économique béton (kg/cm²)",
+          "type": "float",
+          "default": 100.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "contrainte_beton_ref",
+          "label": "Contrainte de référence du béton (kg/cm²)",
+          "type": "float",
+          "default": 5.8,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "contrainte_acier_adm",
+          "label": "Contrainte traction admissible armatures (kg/cm²)",
+          "type": "float",
+          "default": 2800.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "contrainte_etrier_adm",
+          "label": "Contrainte traction admissible étriers (kg/cm²)",
+          "type": "float",
+          "default": 2800.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "densite_beton",
+          "label": "Densité du béton armé (t/m³)",
+          "type": "float",
+          "default": 2.5,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "poisson",
+          "label": "Coefficient de Poisson",
+          "type": "float",
+          "default": 0.15,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "longueur_barre",
+          "label": "Longueur commerciale des barres d'acier (m)",
+          "type": "float",
+          "default": 12.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "equiv_acier_beton",
+          "label": "Coefficient d'équivalence acier-béton",
+          "type": "float",
+          "default": 15.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        },
+        {
+          "id": "enrobage",
+          "label": "Enrobage des armatures (cm)",
+          "type": "float",
+          "default": 3.0,
+          "required": true,
+          "applies_to": ["simple", "double", "triple"]
+        }
+      ]
+    }
+  ]
+}

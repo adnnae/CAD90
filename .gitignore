@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# PyInstaller builds (Desktop)
+build/
+dist/
+*.spec
+
+# System & IDE
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Virtualenv
+venv/
+env/
+.env
+
+# Garder expressément les moteurs et templates
+!legacy_bins/
+!legacy_bins/*.EXE
+!config/template_bq.xlsx
