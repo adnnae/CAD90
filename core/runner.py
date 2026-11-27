@@ -362,6 +362,15 @@ class EngineRunner:
 
         if pty is not None:
             master, slave = pty.openpty()
+            # Désactiver l'écho automatique du PTY pour éviter la boucle infinie
+            try:
+                import termios
+                attrs = termios.tcgetattr(master)
+                attrs[3] = attrs[3] & ~termios.ECHO
+                termios.tcsetattr(master, termios.TCSANOW, attrs)
+            except Exception:
+                pass
+
             try:
                 proc = subprocess.Popen(
                     [wine_cmd, str(engine_path.resolve())],
@@ -385,32 +394,52 @@ class EngineRunner:
                 )
             os.close(slave)
 
-            # Envoyer le nom du fichier et le choix 1 sans attendre pour éviter tout blocage de buffer
-            time.sleep(0.4)
-            try:
-                os.write(master, (data_file_path.name + "\r\n").encode("latin1"))
-                time.sleep(0.2)
-                os.write(master, b"1\r\n")
-            except OSError:
-                pass
-
+            sent_filename = False
+            sent_choice = False
+            last_screen = ""
+            last_change_ts = time.time()
+            enter_sent_for_screen = False
             deadline = time.time() + timeout_seconds
 
             try:
                 while time.time() < deadline:
-                    r, _, _ = select.select([master], [], [], 0.08)
+                    r, _, _ = select.select([master], [], [], 0.05)
                     if r:
                         try:
                             chunk = os.read(master, 2048)
                             if not chunk:
                                 break
                             captured_output.append(chunk)
-                            try:
-                                os.write(master, b"\r\n")
-                            except OSError:
-                                pass
+                            current_text = b"".join(captured_output).decode("latin1", errors="ignore")
+                            if current_text != last_screen:
+                                last_screen = current_text
+                                last_change_ts = time.time()
+                                enter_sent_for_screen = False
+
+                            low = current_text.lower()
+                            if not sent_filename and "nom de votre fichier" in low:
+                                os.write(master, (data_file_path.name + "\r").encode("latin1"))
+                                sent_filename = True
+                                last_change_ts = time.time()
+                                enter_sent_for_screen = True
+                                time.sleep(0.15)
+                                continue
+
+                            if sent_filename and not sent_choice and "entrez votre choix" in low:
+                                os.write(master, b"1\r")
+                                sent_choice = True
+                                last_change_ts = time.time()
+                                enter_sent_for_screen = True
+                                time.sleep(0.15)
+                                continue
+
+                            if sent_choice and not enter_sent_for_screen:
+                                if (time.time() - last_change_ts) >= 0.45:
+                                    os.write(master, b"\r")
+                                    enter_sent_for_screen = True
                         except OSError:
                             break
+
                     if proc.poll() is not None:
                         while True:
                             r, _, _ = select.select([master], [], [], 0.05)
