@@ -639,17 +639,17 @@ class EngineRunner:
         emit(b"\x2E\xFF\x2E"); abs16("old_off")  # jmp far [cs:old_off]
 
         label("check_prn")
-        emit(b"\x56\x89\xD6")        # push si; mov si, dx
+        emit(b"\x50\x56\x89\xD6")    # push ax; push si; mov si, dx
         for ch in (0x50, 0x52, 0x4E):  # 'P', 'R', 'N'
             emit(b"\xAC\x24\xDF\x3C" + bytes([ch]))
             emit(b"\x75"); rel8("not_prn")
         emit(b"\xAC\x3C\x00")        # lodsb; cmp al, 0
         emit(b"\x75"); rel8("not_prn")
-        emit(b"\x5E")                # pop si
+        emit(b"\x5E\x58")            # pop si; pop ax
         emit(b"\xEB"); rel8("is_prn")
 
         label("not_prn")
-        emit(b"\x5E")                # pop si
+        emit(b"\x5E\x58")            # pop si; pop ax
         emit(b"\xEB"); rel8("chain")
 
         label("is_prn")
