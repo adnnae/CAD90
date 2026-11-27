@@ -349,7 +349,7 @@ class EngineRunner:
         wine_cmd = shutil.which("wine") or shutil.which("wine64") or "wine"
         env = dict(os.environ)
         env["WINEDEBUG"] = "-all"
-        runtime_dir = Path("/tmp/runtime-root")
+        runtime_dir = Path("/root/.runtime")
         try:
             runtime_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
         except OSError:
@@ -360,43 +360,98 @@ class EngineRunner:
         captured_output: List[bytes] = []
         exit_code = 0
 
-        try:
-            proc = subprocess.Popen(
-                [wine_cmd, str(engine_path.resolve())],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                cwd=str(work_dir),
-                env=env,
-            )
-            # Envoi du nom de fichier, du choix d'écran (1), puis des retours chariots pour défiler les écrans
-            stdin_data = (f"{data_file_path.name}\r\n1\r\n" + "\r\n" * 50).encode("latin1")
-            stdout_bytes, stderr_bytes = proc.communicate(input=stdin_data, timeout=timeout_seconds)
-            if stdout_bytes:
-                captured_output.append(stdout_bytes)
-            if stderr_bytes:
-                captured_output.append(stderr_bytes)
-            exit_code = proc.returncode or 0
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            exit_code = -1
-            return ExecutionResult(
-                success=False,
-                structure_type=structure_type,
-                engine_path=str(engine_path),
-                work_dir=str(work_dir),
-                data_file_path=str(data_file_path),
-                error_message=f"Délai d'exécution dépassé ({timeout_seconds}s).",
-            )
-        except Exception as exc:
-            return ExecutionResult(
-                success=False,
-                structure_type=structure_type,
-                engine_path=str(engine_path),
-                work_dir=str(work_dir),
-                data_file_path=str(data_file_path),
-                error_message=f"Erreur exécution Wine : {exc}",
-            )
+        if pty is not None:
+            master, slave = pty.openpty()
+            try:
+                proc = subprocess.Popen(
+                    [wine_cmd, str(engine_path.resolve())],
+                    stdin=slave,
+                    stdout=slave,
+                    stderr=slave,
+                    cwd=str(work_dir),
+                    env=env,
+                    close_fds=True,
+                )
+            except Exception as exc:
+                os.close(slave)
+                os.close(master)
+                return ExecutionResult(
+                    success=False,
+                    structure_type=structure_type,
+                    engine_path=str(engine_path),
+                    work_dir=str(work_dir),
+                    data_file_path=str(data_file_path),
+                    error_message=f"Erreur lancement Wine : {exc}",
+                )
+            os.close(slave)
+
+            # Envoyer le nom du fichier et le choix 1 sans attendre pour éviter tout blocage de buffer
+            time.sleep(0.4)
+            try:
+                os.write(master, (data_file_path.name + "\r\n").encode("latin1"))
+                time.sleep(0.2)
+                os.write(master, b"1\r\n")
+            except OSError:
+                pass
+
+            deadline = time.time() + timeout_seconds
+
+            try:
+                while time.time() < deadline:
+                    r, _, _ = select.select([master], [], [], 0.08)
+                    if r:
+                        try:
+                            chunk = os.read(master, 2048)
+                            if not chunk:
+                                break
+                            captured_output.append(chunk)
+                            try:
+                                os.write(master, b"\r\n")
+                            except OSError:
+                                pass
+                        except OSError:
+                            break
+                    if proc.poll() is not None:
+                        while True:
+                            r, _, _ = select.select([master], [], [], 0.05)
+                            if not r:
+                                break
+                            try:
+                                c = os.read(master, 2048)
+                                if not c:
+                                    break
+                                captured_output.append(c)
+                            except OSError:
+                                break
+                        break
+            finally:
+                os.close(master)
+                if proc.poll() is None:
+                    proc.terminate()
+                exit_code = proc.returncode or 0
+        else:
+            try:
+                proc = subprocess.Popen(
+                    [wine_cmd, str(engine_path.resolve())],
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=str(work_dir),
+                    env=env,
+                )
+                stdin_data = (f"{data_file_path.name}\n1\n" + "\n" * 40).encode("latin1")
+                stdout, stderr = proc.communicate(input=stdin_data, timeout=timeout_seconds)
+                captured_output.append(stdout)
+                exit_code = proc.returncode or 0
+            except Exception as exc:
+                return ExecutionResult(
+                    success=False,
+                    structure_type=structure_type,
+                    engine_path=str(engine_path),
+                    work_dir=str(work_dir),
+                    data_file_path=str(data_file_path),
+                    error_message=f"Erreur exécution Wine : {exc}",
+                )
 
         if copied_to_engine_dir and engine_data_file.exists():
             try:

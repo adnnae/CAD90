@@ -5,7 +5,7 @@ ENV PYTHONUNBUFFERED=1
 ENV WINEDEBUG=-all
 ENV WINEPREFIX=/root/.wine
 ENV DISPLAY=:99
-ENV XDG_RUNTIME_DIR=/tmp/runtime-root
+ENV XDG_RUNTIME_DIR=/root/.runtime
 
 # Installation du support multiarch 32-bit (i386) et 64-bit pour Wine
 RUN dpkg --add-architecture i386 && \
@@ -27,8 +27,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copie du projet et des binaires legacy_bins
 COPY . .
 
-# Préparation de Wine et répertoires
-RUN mkdir -p /tmp/runtime-root && chmod 700 /tmp/runtime-root && wineboot --init || true
+# Préparation du répertoire runtime et initialisation silencieuse de Wine
+RUN mkdir -p /root/.runtime && chmod 700 /root/.runtime && \
+    mkdir -p /root/.wine && wineboot --init || true
 
 EXPOSE 10000
 

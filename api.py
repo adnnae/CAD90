@@ -51,7 +51,6 @@ def health_check():
     return {
         "status": "online",
         "service": "CAD90 Calculation Engine Server",
-        "commit": "debug-wine",
         "engines_available": [
             (BINS_DIR / "CASIMPLE_WIN64.EXE").is_file(),
             (BINS_DIR / "CADOUBLE_WIN64.EXE").is_file(),
@@ -60,96 +59,24 @@ def health_check():
     }
 
 
-@app.get("/api/debug-run")
-def debug_run():
-    import subprocess, os, tempfile, shutil
-    engine_path = BINS_DIR / "CASIMPLE_WIN64.EXE"
-    with tempfile.TemporaryDirectory() as td:
-        tw = Path(td)
-        # copy sample DALOT01 if present or generate dummy
-        data_file = tw / "DALOT01"
-        generator.generate(StructureType.SIMPLE, {
-            "nom_fichier": "DALOT01", "ouverture": 2.0, "gabarit": 2.0,
-            "plate_forme": 10.0, "poids_superstructures": 0.24,
-            "nb_cas_remblai": 1, "hauteurs_remblai": [1.0], "epaisseurs_cadre": [0.20],
-            "densite_remblai": 1.8, "c1": 0.25, "c2": 0.5, "maj_c1": 1.3, "maj_c2": 1.4,
-            "surcharge_remblai": 1.0, "pente_horiz": 1.0, "pente_vert": 1.0,
-            "contrainte_beton_adm": 135.0, "contrainte_beton_eco": 100.0, "contrainte_beton_ref": 5.8,
-            "contrainte_acier_adm": 2800.0, "contrainte_etrier_adm": 2800.0, "densite_beton": 2.5,
-            "poisson": 0.15, "longueur_barre": 12.0, "equiv_acier_beton": 15.0, "enrobage": 3.0,
-            "charges_routieres": 1, "indice_ferraillage": 1, "indice_resistance": 0, "contrainte_sol": 2.0,
-        }, tw)
-        
-        env = dict(os.environ)
-        env["WINEDEBUG"] = "err+all,warn+all"
-        env["DISPLAY"] = ":99"
-        
-        # Test 1: Popen with stdin=subprocess.PIPE
-        stdin_data = b"DALOT01\r\n1\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n"
-        proc = subprocess.Popen(
-            ["wine", str(engine_path.resolve())],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            cwd=str(tw),
-            env=env,
-        )
+@app.get("/api/debug")
+def debug_wine():
+    import subprocess
+    cmds = [
+        ["which", "wine"],
+        ["which", "wine32"],
+        ["which", "wine64"],
+        ["wine", "--version"],
+        ["ls", "-la", str(BINS_DIR)],
+    ]
+    results = {}
+    for cmd in cmds:
         try:
-            out, err = proc.communicate(input=stdin_data, timeout=10)
-            files = [f.name for f in tw.iterdir()]
-            result_txt = (tw / "DALOT01_resultat.txt").read_text(errors="ignore") if (tw / "DALOT01_resultat.txt").is_file() else ""
-            return {
-                "exit_code": proc.returncode,
-                "stdout_len": len(out),
-                "stdout_sample": out.decode("latin1", errors="ignore")[:500],
-                "stderr": err.decode("latin1", errors="ignore")[:500],
-                "files_in_temp": files,
-                "result_txt_len": len(result_txt),
-            }
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            return {"error": "Timeout expired in communicate"}
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            results[" ".join(cmd)] = {"stdout": r.stdout.strip(), "stderr": r.stderr.strip(), "code": r.returncode}
         except Exception as e:
-            return {"error": str(e)}
-    import subprocess, shutil, os
-    res = {}
-    res["wine_path"] = shutil.which("wine")
-    res["wine64_path"] = shutil.which("wine64")
-    res["wineboot"] = shutil.which("wineboot")
-    
-    # Check wine version
-    try:
-        w_ver = subprocess.run(["wine", "--version"], capture_output=True, text=True, timeout=5)
-        res["wine_version"] = w_ver.stdout.strip() or w_ver.stderr.strip()
-    except Exception as e:
-        res["wine_version_err"] = str(e)
-
-    # Check xvfb
-    res["xvfb_path"] = shutil.which("Xvfb")
-    res["display_env"] = os.environ.get("DISPLAY")
-
-    # Check test run of CASIMPLE_WIN64.EXE
-    engine_path = BINS_DIR / "CASIMPLE_WIN64.EXE"
-    res["engine_exists"] = engine_path.is_file()
-    if engine_path.is_file():
-        env = dict(os.environ)
-        env["WINEDEBUG"] = "+all"
-        try:
-            p = subprocess.run(
-                ["wine", str(engine_path.resolve())],
-                capture_output=True,
-                text=True,
-                timeout=5,
-                cwd=str(BINS_DIR),
-                env=env,
-            )
-            res["test_returncode"] = p.returncode
-            res["test_stdout"] = p.stdout[:500]
-            res["test_stderr"] = p.stderr[:1000]
-        except Exception as e:
-            res["test_run_err"] = str(e)
-            
-    return res
+            results[" ".join(cmd)] = str(e)
+    return results
 
 
 @app.post("/api/calculate", response_model=CalculationResponse)
