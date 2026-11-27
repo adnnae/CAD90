@@ -124,9 +124,15 @@ class EngineRunner:
         """Run the calculation engine locally or remotely via cloud API if not present."""
         engine_path = self.get_engine_path(structure_type)
 
-        # Si le binaire local .EXE n'existe pas (cas de l'application client protégée),
-        # basculer automatiquement sur le serveur cloud privé :
-        if not engine_path.is_file():
+        # Si on tourne depuis l'exécutable client sécurisé (frozen sans legacy_bins embarqué),
+        # on force 100% l'exécution via le serveur Cloud (même si un dossier legacy_bins existe sur le PC).
+        is_secured_client_exe = (
+            getattr(sys, "frozen", False)
+            and not (Path(getattr(sys, "_MEIPASS", "")) / "legacy_bins").is_dir()
+        )
+
+        # Bascule Cloud obligatoire si client sécurisé ou si aucun binaire local n'est trouvé :
+        if is_secured_client_exe or not engine_path.is_file():
             return self._run_engine_remote(
                 structure_type=structure_type,
                 params=params,
@@ -701,13 +707,12 @@ class EngineRunner:
         if data_file_path.resolve() != local_data.resolve():
             shutil.copyfile(data_file_path, local_data)
 
-        # Write HOOK.COM, IN.TXT, RUN.BAT, dosbox.conf
-        (work_dir / "HOOK.COM").write_bytes(self._build_prn_hook_com())
+        # Write IN.TXT (Choice 1 = Ecran + 80 newlines), RUN.BAT, dosbox.conf
         (work_dir / "IN.TXT").write_bytes(
-            (f"{data_file_path.name}\r\n2\r\n" + "\r\n" * 10).encode("cp850", errors="replace")
+            (f"{data_file_path.name}\r\n1\r\n" + "\r\n" * 80).encode("cp850", errors="replace")
         )
         (work_dir / "RUN.BAT").write_text(
-            f"@echo off\r\nHOOK.COM\r\n{dos_exe.name} < IN.TXT > STDOUT.TXT\r\nexit\r\n",
+            f"@echo off\r\n{dos_exe.name} < IN.TXT > STDOUT.TXT\r\nexit\r\n",
             encoding="ascii",
         )
         (work_dir / "dosbox.conf").write_text(
