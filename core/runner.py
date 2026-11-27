@@ -104,10 +104,11 @@ if IS_WINDOWS and _k32:
 
 
 class EngineRunner:
-    """Launches the appropriate legacy engine in a hidden console without modifying original binaries."""
+    """Launches the calculation engine locally or remotely via Cloud API."""
 
-    def __init__(self, legacy_bins_dir: Path):
+    def __init__(self, legacy_bins_dir: Path, remote_api_url: str = "https://cad90.onrender.com/api/calculate"):
         self.legacy_bins_dir = legacy_bins_dir
+        self.remote_api_url = remote_api_url
 
     def get_engine_path(self, structure_type: StructureType) -> Path:
         return self.legacy_bins_dir / structure_type.engine_filename
@@ -118,17 +119,20 @@ class EngineRunner:
         data_file_path: Path,
         work_dir: Path,
         timeout_seconds: int = 45,
+        params: dict = None,
     ) -> ExecutionResult:
-        """Run the calculation engine hidden (no console window) and capture its output."""
+        """Run the calculation engine locally or remotely via cloud API if not present."""
         engine_path = self.get_engine_path(structure_type)
+
+        # Si le binaire local .EXE n'existe pas (cas de l'application client protégée),
+        # basculer automatiquement sur le serveur cloud privé :
         if not engine_path.is_file():
-            return ExecutionResult(
-                success=False,
+            return self._run_engine_remote(
                 structure_type=structure_type,
-                engine_path=str(engine_path),
-                work_dir=str(work_dir),
-                data_file_path=str(data_file_path),
-                error_message=f"Exécutable introuvable : {engine_path}",
+                params=params,
+                data_file_path=data_file_path,
+                work_dir=work_dir,
+                timeout_seconds=timeout_seconds,
             )
 
         # On non-Windows platforms (e.g. Linux container with Wine on Render), use Wine runner
@@ -479,4 +483,70 @@ class EngineRunner:
             stdout=full_text,
             generated_files=sorted(after_files),
             error_message="" if exit_code == 0 else f"Code retour Wine: {exit_code}",
+        )
+
+    def _run_engine_remote(
+        self,
+        structure_type: StructureType,
+        params: dict,
+        data_file_path: Path,
+        work_dir: Path,
+        timeout_seconds: int = 60,
+    ) -> ExecutionResult:
+        """Exécution à distance sur le serveur privé Render (moteurs sécurisés hors du PC client)."""
+        import json
+        import urllib.request
+
+        work_dir.mkdir(parents=True, exist_ok=True)
+        api_url = self.remote_api_url or "https://cad90.onrender.com/api/calculate"
+
+        payload = {
+            "structure_type": structure_type.value,
+            "params": params or {"nom_fichier": data_file_path.name},
+        }
+
+        req = urllib.request.Request(
+            api_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=timeout_seconds) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+        except Exception as exc:
+            return ExecutionResult(
+                success=False,
+                structure_type=structure_type,
+                engine_path=api_url,
+                work_dir=str(work_dir),
+                data_file_path=str(data_file_path),
+                error_message=f"Impossible de contacter le serveur cloud ({api_url}) : {exc}",
+            )
+
+        stdout = data.get("stdout", "")
+        generated_files = []
+
+        report_path = work_dir / f"{data_file_path.name}_resultat.txt"
+        if stdout:
+            report_path.write_text(stdout, encoding="utf-8")
+            generated_files.append(report_path)
+
+        for fname, content in data.get("file_contents", {}).items():
+            fp = work_dir / fname
+            fp.write_text(content, encoding="utf-8")
+            if fp not in generated_files:
+                generated_files.append(fp)
+
+        return ExecutionResult(
+            success=data.get("success", False),
+            structure_type=structure_type,
+            engine_path=api_url,
+            work_dir=str(work_dir),
+            data_file_path=str(data_file_path),
+            exit_code=data.get("exit_code", 0),
+            stdout=stdout,
+            generated_files=generated_files,
+            error_message=data.get("error_message", ""),
         )

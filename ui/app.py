@@ -867,7 +867,7 @@ class DalotApp(tk.Tk):
 
         def _worker() -> None:
             runner = EngineRunner(bins_dir)
-            res: ExecutionResult = runner.run_engine(st, data_file, work_dir)
+            res: ExecutionResult = runner.run_engine(st, data_file, work_dir, params=params)
             self.after(0, lambda: self._on_run_finished(res, st, params))
 
         threading.Thread(target=_worker, daemon=True).start()
