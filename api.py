@@ -51,6 +51,7 @@ def health_check():
     return {
         "status": "online",
         "service": "CAD90 Calculation Engine Server",
+        "commit": "f60ccf3-wine32",
         "engines_available": [
             (BINS_DIR / "CASIMPLE_WIN64.EXE").is_file(),
             (BINS_DIR / "CADOUBLE_WIN64.EXE").is_file(),
