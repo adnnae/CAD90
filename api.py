@@ -81,7 +81,7 @@ def debug_run():
         }, tw)
         
         env = dict(os.environ)
-        env["WINEDEBUG"] = "-all"
+        env["WINEDEBUG"] = "err+all,warn+all"
         env["DISPLAY"] = ":99"
         
         # Test 1: Popen with stdin=subprocess.PIPE
