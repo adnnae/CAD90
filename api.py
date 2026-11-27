@@ -1,6 +1,7 @@
 """API REST pour l'exécution sécurisée et isolée des moteurs de calcul CAD90 sous Render (Wine64)."""
 
 from pathlib import Path
+import shutil
 import tempfile
 from typing import Any, Dict
 from fastapi import FastAPI, HTTPException
@@ -82,24 +83,35 @@ def debug_wine():
 @app.get("/api/test_run")
 def test_wine_run():
     import subprocess
-    cmd = ["wine", str(BINS_DIR / "CASIMPLE_WIN64.EXE")]
-    try:
-        p = subprocess.Popen(
-            cmd,
-            cwd=str(BINS_DIR),
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        inputs = b"DALOT01\r\n1\r\n\r\n\r\n\r\n"
-        out, err = p.communicate(input=inputs, timeout=30)
+    import os
+    from pathlib import Path
+    dos_exe = BASE_DIR / "dos_bins" / "CASIMPLE.EXE"
+    with tempfile.TemporaryDirectory() as td:
+        wd = Path(td)
+        shutil.copyfile(dos_exe, wd / "CASIMPLE.EXE")
+        from core.models import StructureType, ParameterSchema
+        schema = ParameterSchema(BASE_DIR / "config" / "parameters.json")
+        p = {fld["id"]: fld.get("default") for sec in schema.sections_for(StructureType.SIMPLE) for fld in sec["fields"]}
+        p.update({"nom_fichier": "DALOT01", "hauteurs_remblai": [1.0], "epaisseurs_cadre": [0.20]})
+        generator.generate(StructureType.SIMPLE, p, wd)
+        (wd / "IN.TXT").write_bytes((b"DALOT01\r\n1\r\n" + b"\r\n" * 80))
+        (wd / "RUN.BAT").write_text("@echo off\r\nCASIMPLE.EXE < IN.TXT > STDOUT.TXT\r\nexit\r\n", encoding="ascii")
+        (wd / "dosbox.conf").write_text("[cpu]\ncycles=max\n[mixer]\nnosound=true\n", encoding="ascii")
+        env = dict(os.environ)
+        env["SDL_VIDEODRIVER"] = "dummy"
+        env["SDL_AUDIODRIVER"] = "dummy"
+        timed_out = False
+        try:
+            subprocess.run(["dosbox", "-conf", str(wd / "dosbox.conf"), str(wd / "RUN.BAT")], cwd=str(wd), env=env, timeout=6, capture_output=True)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+        stdout_txt = (wd / "STDOUT.TXT").read_text(encoding="cp850", errors="replace") if (wd / "STDOUT.TXT").is_file() else ""
         return {
-            "stdout": out.decode("latin1", errors="replace"),
-            "stderr": err.decode("latin1", errors="replace"),
-            "code": p.returncode,
+            "timed_out": timed_out,
+            "files": [f.name for f in wd.iterdir()],
+            "stdout_len": len(stdout_txt),
+            "stdout_preview": stdout_txt[:2000],
         }
-    except Exception as e:
-        return {"error": str(e)}
 
 
 @app.post("/api/calculate", response_model=CalculationResponse)
